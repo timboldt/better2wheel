@@ -26,9 +26,9 @@
 // Use Jeff Rowberg's excellent MPU6050 library which uses highly-efficient
 // interrupt-driven data capture.
 #include "I2Cdev.h"
-#include "motor.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "Wire.h"
+#include "motor.h"
 
 // ================================================================
 //   MPU6050 IMU code
@@ -157,15 +157,56 @@ Motor LeftMotor(12, 11);
 Motor RightMotor(8, 3);
 
 void motorSetup() {
-    //Change the timer frequency
-  //To avoid the frequency of hearing.
+  // Change the timer frequency
+  // To avoid the frequency of hearing.
   TCCR2B &= ~7;
   TCCR2B |= 1;
 }
 
 // ================================================================
+//   PID Control
+// ================================================================
+
+class PidInfo {
+ public:
+  PidInfo(float p, float i, float d, float limit) {
+    kp = p;
+    ki = i;
+    kd = d;
+    previous = 0;
+    accumulator = 0;
+    accumulatorLimit = limit;
+  }
+
+  float update(float e);
+
+ private:
+  float kp, ki, kd;
+  float previous;          // Previous error.
+  float accumulator;       // Cummulative error.
+  float accumulatorLimit;  // Maximum absolute value of accumulator.
+};
+
+float PidInfo::update(float e) {
+  float r;
+  accumulator += e;
+  if (accumulator > accumulatorLimit) {
+    accumulator = accumulatorLimit;
+  } else if (accumulator < -accumulatorLimit) {
+    accumulator = -accumulatorLimit;
+  }
+  r = kp * e + ki * accumulator + kd * (e - previous);
+  previous = e;
+  return r;
+}
+
+// ================================================================
 //   Mainline Code
 // ================================================================
+
+PidInfo pidAngle(1145, 57, 3438, PI);
+PidInfo pidOdometer(1, 0, 0, PI/10);
+float targetAngle = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -175,7 +216,14 @@ void setup() {
 
 void loop() {
   float angle = imuGetAngle();
-  Serial.println(angle);
-  LeftMotor.SetSpeed(angle * 255);
-  RightMotor.SetSpeed(-angle*255);
+  if (abs(angle) > PI/3) {
+    // Game over. Stop the motors.
+    LeftMotor.SetSpeed(0);
+    RightMotor.SetSpeed(0);
+    return;
+  }
+  float speed = pidAngle.update(angle - targetAngle);
+  Serial.println(speed);
+  LeftMotor.SetSpeed(+speed);
+  RightMotor.SetSpeed(-speed);
 }
