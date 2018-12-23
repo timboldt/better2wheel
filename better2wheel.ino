@@ -23,6 +23,9 @@
 //      D11 - Left side, direction pin
 //      D12 - Left side, speed pin
 
+#include <Arduino.h>
+#include <avr/wdt.h>
+#include <pins_arduino.h>
 // Use Jeff Rowberg's excellent MPU6050 library which uses highly-efficient
 // interrupt-driven data capture.
 #include "I2Cdev.h"
@@ -164,6 +167,95 @@ void motorSetup() {
 }
 
 // ================================================================
+//   Encoder Reader
+// ================================================================
+
+#define RIGHT_ENCODER_A (1 << 0)
+#define RIGHT_ENCODER_B (1 << 1)
+#define LEFT_ENCODER_A (1 << 2)
+#define LEFT_ENCODER_B (1 << 3)
+
+volatile long int rightOdometer = 0;
+volatile long int leftOdometer = 0;
+
+ISR(PCINT1_vect) {
+  static char oldPin = 0xff;
+  char in = PINC;
+  char change = in ^ oldPin;
+  if (change & RIGHT_ENCODER_A) {
+    if (in & RIGHT_ENCODER_A) {
+      if (in & RIGHT_ENCODER_B) {
+        rightOdometer++;
+      } else {
+        rightOdometer--;
+      }
+    } else {
+      if (in & RIGHT_ENCODER_B) {
+        rightOdometer--;
+      } else {
+        rightOdometer++;
+      }
+    }
+  } else if (change & (RIGHT_ENCODER_B)) {
+    if (in & (RIGHT_ENCODER_B)) {
+      if (in & RIGHT_ENCODER_A) {
+        rightOdometer--;
+      } else {
+        rightOdometer++;
+      }
+    } else {
+      if (in & RIGHT_ENCODER_A) {
+        rightOdometer++;
+      } else {
+        rightOdometer--;
+      }
+    }
+  }
+
+  if (change & LEFT_ENCODER_A) {
+    if (in & LEFT_ENCODER_A) {
+      if (in & LEFT_ENCODER_B) {
+        leftOdometer++;
+      } else {
+        leftOdometer--;
+      }
+    } else {
+      if (in & LEFT_ENCODER_B) {
+        leftOdometer--;
+      } else {
+        leftOdometer++;
+      }
+    }
+  } else if (change & (LEFT_ENCODER_B)) {
+    if (in & (LEFT_ENCODER_B)) {
+      if (in & LEFT_ENCODER_A) {
+        leftOdometer--;
+      } else {
+        leftOdometer++;
+      }
+    } else {
+      if (in & LEFT_ENCODER_A) {
+        leftOdometer++;
+      } else {
+        leftOdometer--;
+      }
+    }
+  }
+  oldPin = in;
+}
+
+void encoderSetup() {
+  pinMode(A0, INPUT_PULLUP);
+  pinMode(A1, INPUT_PULLUP);
+  pinMode(A2, INPUT_PULLUP);
+  pinMode(A3, INPUT_PULLUP);
+  PCIFR = 1 << 1;
+  PCMSK1 = RIGHT_ENCODER_A | RIGHT_ENCODER_B | LEFT_ENCODER_A | LEFT_ENCODER_B;
+  PCICR = 1 << 1;
+  sei();
+}
+
+// ================================================================
 //   PID Control
 // ================================================================
 
@@ -175,10 +267,12 @@ class PidInfo {
     kd = d;
     previous = 0;
     accumulator = 0;
-    accumulatorLimit = limit;
+    accumulatorLimit = limit / i;
   }
 
   float update(float e);
+
+  void reset();
 
  private:
   float kp, ki, kd;
@@ -188,42 +282,73 @@ class PidInfo {
 };
 
 float PidInfo::update(float e) {
-  float r;
   accumulator += e;
   if (accumulator > accumulatorLimit) {
     accumulator = accumulatorLimit;
   } else if (accumulator < -accumulatorLimit) {
     accumulator = -accumulatorLimit;
   }
-  r = kp * e + ki * accumulator + kd * (e - previous);
+  float r = kp * e + ki * accumulator + kd * (e - previous);
   previous = e;
   return r;
 }
+
+void PidInfo::reset() { accumulator = 0; }
 
 // ================================================================
 //   Mainline Code
 // ================================================================
 
-PidInfo pidAngle(1145, 57, 3438, PI);
-PidInfo pidOdometer(1, 0, 0, PI/10);
-float targetAngle = 0;
+//PidInfo pidDistance(0, 1.0, 0, 0.035);
+//PidInfo pidAngle(1145, 57, 3438, 255);
+PidInfo pidDistance(0, 1.0, 0, 0.035);
+PidInfo pidAngle(1145, 57, 3438, 255);
+PidInfo pidAngle(1145, 57, 3438, 255);
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("Booting...");
+
+  // Setup a watchdog
+  // When the battery voltage is insufficient / program unexpected
+  // Watchdog reset chip
+  wdt_enable(WDTO_1S);
+  wdt_reset();
+
   imuSetup();
   motorSetup();
+  encoderSetup();
+  Serial.println("Boot Complete");
 }
 
 void loop() {
+  static float targetAngle = 0;
+
+  wdt_reset();
+
   float angle = imuGetAngle();
-  if (abs(angle) > PI/3) {
+  if (abs(angle) > PI / 3) {
     // Game over. Stop the motors.
     LeftMotor.SetSpeed(0);
     RightMotor.SetSpeed(0);
+    pidAngle.reset();
+    pidDistance.reset();
     return;
   }
+  float distance = leftOdometer / 1e6;
+  targetAngle = pidDistance.update(-distance);
+  const float twoDegrees = 0.035;
+  if (targetAngle > twoDegrees) {
+    targetAngle = twoDegrees;
+  } else if (targetAngle < -twoDegrees) {
+    targetAngle = twoDegrees;
+  }
   float speed = pidAngle.update(angle - targetAngle);
-  Serial.println(speed);
   LeftMotor.SetSpeed(+speed);
   RightMotor.SetSpeed(-speed);
+  {
+    Serial.print(angle*180/PI);
+    Serial.print("\t");
+    Serial.println(speed);
+  }
 }
