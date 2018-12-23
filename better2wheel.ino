@@ -6,7 +6,6 @@
 //  - Arduino Uno.
 // Orientation:
 //  Right Side - electronics
-//  Left Side - batteries
 // Pins:
 //   MPU6050:
 //      A5 - SCL
@@ -302,7 +301,6 @@ void PidInfo::reset() { accumulator = 0; }
 //PidInfo pidDistance(0, 1.0, 0, 0.035);
 //PidInfo pidAngle(1145, 57, 3438, 255);
 PidInfo pidDistance(0, 1.0, 0, 0.035);
-PidInfo pidAngle(1145, 57, 3438, 255);
 PidInfo pidAngle(1145, 57, 3438, 255);
 
 void setup() {
