@@ -12,15 +12,15 @@
 //      A4 - SDA
 //      D2 - INT (interrupt pin)
 //   Wheel encoders:
-//      A0 - Right side, channel A
-//      A1 - Right side, channel B
-//      A2 - Left side, channel A
-//      A3 - Left side, channel B
+//      A0 - Left side, channel A
+//      A1 - Left side, channel B
+//      A2 - Right side, channel A
+//      A3 - Right side, channel B
 //   Motors:
-//      D8 - Right side, direction pin
-//      D3 - Right side, speed pin
-//      D11 - Left side, direction pin
-//      D12 - Left side, speed pin
+//      D3 - Left side, speed pin
+//      D8 - Left side, direction pin
+//      D11 - Right side, direction pin
+//      D12 - Right side, speed pin
 
 #include <Arduino.h>
 #include <avr/wdt.h>
@@ -155,8 +155,8 @@ float imuGetAngle() {
 //   Motor Control
 // ================================================================
 
-Motor LeftMotor(12, 11);
-Motor RightMotor(8, 3);
+Motor LeftMotor(8, 3);
+Motor RightMotor(12, 11);
 
 void motorSetup() {
   // Change the timer frequency
@@ -169,10 +169,10 @@ void motorSetup() {
 //   Encoder Reader
 // ================================================================
 
-#define RIGHT_ENCODER_A (1 << 0)
-#define RIGHT_ENCODER_B (1 << 1)
-#define LEFT_ENCODER_A (1 << 2)
-#define LEFT_ENCODER_B (1 << 3)
+#define LEFT_ENCODER_A (1 << 0)
+#define LEFT_ENCODER_B (1 << 1)
+#define RIGHT_ENCODER_B (1 << 2)  // Intentionally reversed from physical pins.
+#define RIGHT_ENCODER_A (1 << 3)  // Intentionally reversed from physical pins.
 
 volatile long int rightOdometer = 0;
 volatile long int leftOdometer = 0;
@@ -298,10 +298,13 @@ void PidInfo::reset() { accumulator = 0; }
 //   Mainline Code
 // ================================================================
 
-//PidInfo pidDistance(0, 1.0, 0, 0.035);
-//PidInfo pidAngle(1145, 57, 3438, 255);
-PidInfo pidDistance(0, 1.0, 0, 0.035);
-PidInfo pidAngle(1145, 57, 3438, 255);
+PidInfo pidDistance(0, 0, 0, 0.035);    // old=(0, 1.0, 0, 0.035)
+PidInfo pidAngle(1500, 0, 0, 255);  // old=(1145, 57, 3438, 255)
+
+// The differential PID controller handles differences in wheel speeds, and
+// corrects for unintentional differential steering. The P-term is essential,
+// but I'm not sure about the I-term.
+PidInfo pidDifferential(1, 1e-4, 0, 512);
 
 void setup() {
   Serial.begin(115200);
@@ -325,12 +328,21 @@ void loop() {
   wdt_reset();
 
   float angle = imuGetAngle();
-  if (abs(angle) > PI / 3) {
+  {
+    // Serial.print(targetAngle);
+    // Serial.print("\t");
+    Serial.println(angle*180/PI);
+    // Serial.print("\t");
+    // Serial.println(rightOdometer);
+  }
+  if (abs(angle) > PI / 6) {
     // Game over. Stop the motors.
     LeftMotor.SetSpeed(0);
     RightMotor.SetSpeed(0);
-    pidAngle.reset();
     pidDistance.reset();
+    pidAngle.reset();
+    pidDifferential.reset();
+    Serial.println("Over-tilt!");
     return;
   }
   float distance = leftOdometer / 1e6;
@@ -342,11 +354,7 @@ void loop() {
     targetAngle = twoDegrees;
   }
   float speed = pidAngle.update(angle - targetAngle);
-  LeftMotor.SetSpeed(+speed);
-  RightMotor.SetSpeed(-speed);
-  {
-    Serial.print(angle*180/PI);
-    Serial.print("\t");
-    Serial.println(speed);
-  }
+  float speedAdjust = pidDifferential.update(leftOdometer - rightOdometer);
+  LeftMotor.SetSpeed(speed + speedAdjust);
+  RightMotor.SetSpeed(speedAdjust - speed);
 }
