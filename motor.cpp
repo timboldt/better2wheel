@@ -4,7 +4,8 @@
 
 const uint8_t max_speed = 255;
 
-Motor::Motor(uint8_t dir_pin, uint8_t pwm_pin) {
+void Motor::SetupPins(uint8_t dir_pin, uint8_t pwm_pin) {
+  // NOTE: On stm32duino, we can't do this in the constructor.
   _dir_pin = dir_pin;
   _pwm_pin = pwm_pin;
 

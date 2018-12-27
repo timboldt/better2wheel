@@ -18,12 +18,14 @@
 //      A3 - Right side, channel B
 //   Motors:
 //      D3 - Left side, speed pin
-//      D8 - Left side, direction pin
+//      D10 (D8 if using shield with Uno) - Left side, direction pin
 //      D11 - Right side, direction pin
 //      D12 - Right side, speed pin
 
 #include <Arduino.h>
+#ifdef __AVR__
 #include <avr/wdt.h>
+#endif
 #include <pins_arduino.h>
 // Use Jeff Rowberg's excellent MPU6050 library which uses highly-efficient
 // interrupt-driven data capture.
@@ -155,14 +157,19 @@ float imuGetAngle() {
 //   Motor Control
 // ================================================================
 
-Motor LeftMotor(8, 3);
-Motor RightMotor(12, 11);
+Motor LeftMotor;
+Motor RightMotor;
 
 void motorSetup() {
+#ifdef __AVR__
   // Change the timer frequency
   // To avoid the frequency of hearing.
   TCCR2B &= ~7;
   TCCR2B |= 1;
+#endif
+
+  LeftMotor.SetupPins(10, 3);
+  RightMotor.SetupPins(12, 11);
 }
 
 // ================================================================
@@ -177,6 +184,11 @@ void motorSetup() {
 volatile long int rightOdometer = 0;
 volatile long int leftOdometer = 0;
 
+void encoderISR() {
+  // TODO
+}
+
+#ifdef __AVR__
 ISR(PCINT1_vect) {
   static char oldPin = 0xff;
   char in = PINC;
@@ -242,16 +254,19 @@ ISR(PCINT1_vect) {
   }
   oldPin = in;
 }
+#endif
 
 void encoderSetup() {
   pinMode(A0, INPUT_PULLUP);
   pinMode(A1, INPUT_PULLUP);
   pinMode(A2, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP);
+#ifdef __AVR__
   PCIFR = 1 << 1;
   PCMSK1 = RIGHT_ENCODER_A | RIGHT_ENCODER_B | LEFT_ENCODER_A | LEFT_ENCODER_B;
   PCICR = 1 << 1;
   sei();
+#endif
 }
 
 // ================================================================
@@ -298,8 +313,8 @@ void PidInfo::reset() { accumulator = 0; }
 //   Mainline Code
 // ================================================================
 
-PidInfo pidDistance(0, 0, 0, 0.035);    // old=(0, 1.0, 0, 0.035)
-PidInfo pidAngle(1500, 0, 0, 255);  // old=(1145, 57, 3438, 255)
+PidInfo pidDistance(0, 0, 0, 0.035);  // old=(0, 1.0, 0, 0.035)
+PidInfo pidAngle(1145, 57, 3438, 255);
 
 // The differential PID controller handles differences in wheel speeds, and
 // corrects for unintentional differential steering. The P-term is essential,
@@ -310,28 +325,32 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Booting...");
 
+#ifdef __AVR__
   // Setup a watchdog
   // When the battery voltage is insufficient / program unexpected
   // Watchdog reset chip
   wdt_enable(WDTO_1S);
   wdt_reset();
+#endif
 
   imuSetup();
   motorSetup();
-  encoderSetup();
+  //!!!encoderSetup();
   Serial.println("Boot Complete");
 }
 
 void loop() {
   static float targetAngle = 0;
 
+#ifdef __AVR__
   wdt_reset();
+#endif
 
   float angle = imuGetAngle();
   {
     // Serial.print(targetAngle);
     // Serial.print("\t");
-    Serial.println(angle*180/PI);
+    Serial.println(angle * 180 / PI);
     // Serial.print("\t");
     // Serial.println(rightOdometer);
   }
@@ -355,6 +374,8 @@ void loop() {
   }
   float speed = pidAngle.update(angle - targetAngle);
   float speedAdjust = pidDifferential.update(leftOdometer - rightOdometer);
-  LeftMotor.SetSpeed(speed + speedAdjust);
+  // XXXX
+  speedAdjust = 0;
+  LeftMotor.SetSpeed(speedAdjust + speed);
   RightMotor.SetSpeed(speedAdjust - speed);
 }

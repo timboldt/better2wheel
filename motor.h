@@ -10,7 +10,7 @@ class Motor {
   // 'pwm_pin' is the analog output pin that controls the motor speed.
   // Typical values on the OSEPP motor shield are (12, 11) for motor #1 and (8,
   // 3) for motor #2.
-  Motor(uint8_t dir_pin, uint8_t pwm_pin);
+  void SetupPins(uint8_t dir_pin, uint8_t pwm_pin);
 
   // Sets the motor speed.
   // 'speed' should be between -255 and +255. A negative speed runs the motor in
