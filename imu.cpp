@@ -17,9 +17,6 @@ void IMU::Setup(uint8_t digitalInterruptPin) {
   uint8_t mpuIntStatus;  // holds actual interrupt status byte from MPU
   uint8_t devStatus;  // return status after each device operation (0 = success,
                       // !0 = error)
-  bool dmpReady = false;  // set true if DMP init was successful
-  uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
-
   Wire.begin();
   Wire.setClock(400000);  // 400kHz I2C clock.
   mpu.initialize();
@@ -54,8 +51,6 @@ float IMU::GetAngle() {
   uint8_t mpuIntStatus;  // holds actual interrupt status byte from MPU
   uint8_t devStatus;  // return status after each device operation (0 = success,
                       // !0 = error)
-  bool dmpReady = false;   // set true if DMP init was successful
-  uint16_t packetSize;     // expected DMP packet size (default is 42 bytes)
   uint16_t fifoCount;      // count of all bytes currently in FIFO
   uint8_t fifoBuffer[64];  // FIFO storage buffer
 

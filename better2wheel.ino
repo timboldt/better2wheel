@@ -30,7 +30,7 @@
 #include "motor.h"
 
 // ================================================================
-//   MPU6050 IMU code
+//   MPU6050 IMU
 // ================================================================
 
 IMU imu;
@@ -196,7 +196,7 @@ void PidInfo::reset() { accumulator = 0; }
 // ================================================================
 
 PidInfo pidDistance(0, 0, 0, 0.035);  // old=(0, 1.0, 0, 0.035)
-PidInfo pidAngle(1145, 57, 3438, 255);
+PidInfo pidAngle(1145, 57, 0, 255);
 
 // The differential PID controller handles differences in wheel speeds, and
 // corrects for unintentional differential steering. The P-term is essential,

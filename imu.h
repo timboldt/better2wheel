@@ -8,4 +8,7 @@ class IMU {
  public:
   void Setup(uint8_t digitalInterruptPin);
   float GetAngle();
+  private:
+    bool dmpReady = false;  // set true if DMP init was successful
+    uint16_t packetSize = 42;    // expected DMP packet size (default is 42 bytes)
 };
