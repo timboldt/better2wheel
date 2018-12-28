@@ -26,8 +26,11 @@
 #ifdef __AVR__
 #include <avr/wdt.h>
 #endif
+#include <wiring.h>
+
 #include "imu.h"
 #include "motor.h"
+#include "pid.h"
 
 // ================================================================
 //   MPU6050 IMU
@@ -67,7 +70,7 @@ volatile long int rightOdometer = 0;
 volatile long int leftOdometer = 0;
 
 void encoderISR() {
-  // TODO
+  rightOdometer++;
 }
 
 #ifdef __AVR__
@@ -143,6 +146,10 @@ void encoderSetup() {
   pinMode(A1, INPUT_PULLUP);
   pinMode(A2, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP);
+  attachInterrupt(A0, encoderISR, HIGH);
+  attachInterrupt(A1, encoderISR, HIGH);
+  attachInterrupt(A2, encoderISR, HIGH);
+  attachInterrupt(A3, encoderISR, HIGH);
 #ifdef __AVR__
   PCIFR = 1 << 1;
   PCMSK1 = RIGHT_ENCODER_A | RIGHT_ENCODER_B | LEFT_ENCODER_A | LEFT_ENCODER_B;
@@ -155,53 +162,20 @@ void encoderSetup() {
 //   PID Control
 // ================================================================
 
-class PidInfo {
- public:
-  PidInfo(float p, float i, float d, float limit) {
-    kp = p;
-    ki = i;
-    kd = d;
-    previous = 0;
-    accumulator = 0;
-    accumulatorLimit = limit / i;
-  }
-
-  float update(float e);
-
-  void reset();
-
- private:
-  float kp, ki, kd;
-  float previous;          // Previous error.
-  float accumulator;       // Cummulative error.
-  float accumulatorLimit;  // Maximum absolute value of accumulator.
-};
-
-float PidInfo::update(float e) {
-  accumulator += e;
-  if (accumulator > accumulatorLimit) {
-    accumulator = accumulatorLimit;
-  } else if (accumulator < -accumulatorLimit) {
-    accumulator = -accumulatorLimit;
-  }
-  float r = kp * e + ki * accumulator + kd * (e - previous);
-  previous = e;
-  return r;
-}
-
-void PidInfo::reset() { accumulator = 0; }
-
-// ================================================================
-//   Mainline Code
-// ================================================================
 
 PidInfo pidDistance(0, 0, 0, 0.035);  // old=(0, 1.0, 0, 0.035)
+
 PidInfo pidAngle(1145, 57, 0, 255);
 
 // The differential PID controller handles differences in wheel speeds, and
 // corrects for unintentional differential steering. The P-term is essential,
 // but I'm not sure about the I-term.
 PidInfo pidDifferential(1, 1e-4, 0, 512);
+
+
+// ================================================================
+//   Mainline Code
+// ================================================================
 
 void setup() {
   Serial.begin(115200);
@@ -217,7 +191,7 @@ void setup() {
 
   imu.Setup(2);  // Digital pin 2 for the I2C interrupt.
   motorSetup();
-  //!!!encoderSetup();
+  encoderSetup();
   Serial.println("Boot Complete");
 }
 
@@ -232,9 +206,10 @@ void loop() {
   {
     // Serial.print(targetAngle);
     // Serial.print("\t");
-    Serial.println(angle * 180 / PI);
-    // Serial.print("\t");
-    // Serial.println(rightOdometer);
+    //Serial.println(angle * 180 / PI);
+    Serial.print(leftOdometer);
+    Serial.print("\t");
+    Serial.println(rightOdometer);
   }
   if (abs(angle) > PI / 6) {
     // Game over. Stop the motors.
