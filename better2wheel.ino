@@ -30,7 +30,7 @@
 #include "motor.h"
 #include "pid.h"
 
-const bool DEBUG_INPUTS = true;
+const bool DEBUG_OUTPUT = true;
 const float SPEED_EXP_MOVING_AVG_ALPHA = 0.4;
 const float MILLIS_PER_SECOND = 1000;
 
@@ -43,9 +43,9 @@ Encoder LeftEncoder;
 Encoder RightEncoder;
 
 PidInfo pidAverageSpeed(0, 0.1, 0, 5.0 / 180.0f * PI);
-PidInfo pidAngle(1145, 57, 0, 255);
-PidInfo pidLeftSpeed(50, 0.025, 0, 255);
-PidInfo pidRightSpeed(50, 0.025, 0, 255);
+PidInfo pidAngle(1145, 57, 0, 5);
+PidInfo pidLeftSpeed(10, 0.05, 20, 5);
+PidInfo pidRightSpeed(10, 0.05, 20, 5);
 
 // User input.
 float targetAvgSpeed = 0;   // Revolutions per second.
@@ -105,42 +105,33 @@ void loop() {
   float commandAngle = pidAverageSpeed.update(targetAvgSpeed - averageSpeed);
   float commandSpeed = pidAngle.update(commandAngle - angle);
 
-  // //!!!!! try doing a step response here by alternating speed between +x, 0 and -x
-  // uint32_t period = millis() / 1000;
-  // int phase = period % 3;
-  // if (phase == 0) {
-  //   commandSpeed = 2.0;
-  // } else if (phase == 1) {
-  //   commandSpeed = -2.0;
-  // } else {
-  //   commandSpeed = 0.0;
-  // }
+commandSpeed = 1;
 
-  float leftPower = pidLeftSpeed.update(commandSpeed - leftSpeed + targetTurnSpeed);
-  float rightPower = pidRightSpeed.update(commandSpeed - rightSpeed - targetTurnSpeed);
+  const float SPEED_POWER_RATIO = 255.0 / 5.0;
+  float leftPower =
+      SPEED_POWER_RATIO * commandSpeed +
+      pidLeftSpeed.update(commandSpeed - leftSpeed + targetTurnSpeed);
+  float rightPower =
+      SPEED_POWER_RATIO * commandSpeed +
+      pidRightSpeed.update(commandSpeed - rightSpeed - targetTurnSpeed);
 
-  //!!!!! try doing a step response here by alternating speed between +x, 0 and -x
-  uint32_t period = millis() / 1000;
-  int phase = period % 16;
-  leftPower = 256 - (phase * 16);
-  rightPower = leftPower;
-  LeftMotor.SetPower(leftPower);
-  RightMotor.SetPower(-rightPower);
+  LeftMotor.SetPower(-leftPower);
+  RightMotor.SetPower(rightPower);
 
-  if (DEBUG_INPUTS) {
+  if (DEBUG_OUTPUT) {
     // Serial.print(elapsedTime);
     // Serial.print("\t");
     // Serial.print(angle);
     // Serial.print("\t");
-    Serial.print(leftPower / 255.0 * 100.0);
+    Serial.print(commandSpeed);
     // Serial.print("\t");
     // Serial.print(rightPower / 255.0 * 100.0);
     // Serial.print("\t");
-    // Serial.print(leftSpeed / -5.0 * 100.0);
+    // Serial.print(leftSpeed);
     // Serial.print("\t");
-    // Serial.print(rightSpeed / -5.0 * 100.0);
+    // Serial.print(rightSpeed);
     Serial.print("\t");
-    Serial.print(averageSpeed / -5.0 * 100.0);
+    Serial.print(averageSpeed);
     Serial.println();
   }
 }
