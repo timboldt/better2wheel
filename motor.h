@@ -12,10 +12,10 @@ class Motor {
   // 3) for motor #2.
   void SetupPins(uint8_t dir_pin, uint8_t pwm_pin);
 
-  // Sets the motor speed.
-  // 'speed' should be between -255 and +255. A negative speed runs the motor in
+  // Spins the motor.
+  // 'power' should be between -255 and +255. A negative power runs the motor in
   // reverse.
-  void SetSpeed(int speed);
+  void SetPower(int power);
 
  private:
   uint8_t _dir_pin, _pwm_pin;

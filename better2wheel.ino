@@ -30,6 +30,10 @@
 #include "motor.h"
 #include "pid.h"
 
+const bool DEBUG_INPUTS = true;
+const float SPEED_EXP_MOVING_AVG_ALPHA = 0.4;
+const float MILLIS_PER_SECOND = 1000;
+
 IMU imu;
 
 Motor LeftMotor;
@@ -38,12 +42,14 @@ Motor RightMotor;
 Encoder LeftEncoder;
 Encoder RightEncoder;
 
-PidInfo pidDistance(0, 0.1, 0, 5.0 / 180.0f * PI); 
+PidInfo pidAverageSpeed(0, 0.1, 0, 5.0 / 180.0f * PI);
 PidInfo pidAngle(1145, 57, 0, 255);
-// The differential PID controller handles differences in wheel speeds, and
-// corrects for unintentional differential steering. The P-term is essential,
-// but I'm not sure about the I-term.
-PidInfo pidDifferential(100, 0.1, 0, 512);
+PidInfo pidLeftSpeed(0, 0, 0, 0);
+PidInfo pidRightSpeed(0, 0, 0, 0);
+
+// User input.
+float targetAvgSpeed = 0;   // Revolutions per second.
+float targetTurnSpeed = 0;  // Wheel speed difference in revolutions per second.
 
 void setup() {
   Serial.begin(115200);
@@ -59,36 +65,63 @@ void setup() {
 }
 
 void loop() {
-  // Read inputs.
-  float angle = imu.GetAngle();
-  float leftOdometer = LeftEncoder.GetOdometer();
-  float rightOdometer = RightEncoder.GetOdometer();
+  static float prevTime = 0;
+  static float prevLeftOdometer = 0;
+  static float prevRightOdometer = 0;
+  static float averageSpeed = 0;
 
-  // Check for unrecoverable tilt.
-  if (abs(angle) > PI / 4.0f) {
-    LeftMotor.SetSpeed(0);
-    RightMotor.SetSpeed(0);
-    pidDistance.reset();
+  // Get elapsed time.
+  float currTime = millis();
+  float elapsedTime = currTime - prevTime;
+  prevTime = currTime;
+
+  // Get tilt angle in degrees (straight up is zero; positive angle is forward).
+  float angle = imu.GetAngle();
+  if (abs(angle) > 30.0) {
+    // Check for unrecoverable tilt.
+    LeftMotor.SetPower(0);
+    RightMotor.SetPower(0);
+    pidAverageSpeed.reset();
     pidAngle.reset();
-    pidDifferential.reset();
-    Serial.println("Over-tilt!");
+    pidLeftSpeed.reset();
+    pidRightSpeed.reset();
     return;
   }
 
-  // Compute the speed of both wheels.
-  float distance = (leftOdometer + rightOdometer) / 2.0f;
-  float targetAngle = pidDistance.update(-distance);
-  const float maxAngleOffset = 10.0 / 180.0f * PI;
-  if (targetAngle > maxAngleOffset) {
-    targetAngle = maxAngleOffset;
-  } else if (targetAngle < -maxAngleOffset) {
-    targetAngle = maxAngleOffset;
+  // Get (exponential moving average of) wheel speed in revolutions per second
+  // (positive value is forward).
+  float leftOdometer = LeftEncoder.GetOdometer();
+  float rightOdometer = RightEncoder.GetOdometer();
+  float leftSpeed =
+      (leftOdometer - prevLeftOdometer) / elapsedTime * MILLIS_PER_SECOND;
+  float rightSpeed =
+      (rightOdometer - prevRightOdometer) / elapsedTime * MILLIS_PER_SECOND;
+  prevLeftOdometer = leftOdometer;
+  prevRightOdometer = rightOdometer;
+  averageSpeed = SPEED_EXP_MOVING_AVG_ALPHA * (leftSpeed + rightSpeed) / 2.0f +
+                 (1 - SPEED_EXP_MOVING_AVG_ALPHA) * averageSpeed;
+
+  if (DEBUG_INPUTS) {
+    Serial.print(elapsedTime);
+    Serial.print("\t");
+    Serial.print(angle);
+    Serial.print("\t");
+    Serial.print(leftSpeed);
+    Serial.print("\t");
+    Serial.print(rightSpeed);
+    Serial.print("\t");
+    Serial.print(averageSpeed);
+    Serial.println();
   }
-  float speed = pidAngle.update(angle - targetAngle);
-Serial.print((angle - targetAngle)/PI*180);
-Serial.print("\t");
-Serial.println(speed);
-  float speedAdjust = pidDifferential.update(rightOdometer - leftOdometer);
-  LeftMotor.SetSpeed(speedAdjust + speed);
-  RightMotor.SetSpeed(speedAdjust - speed);
+
+  float commandAngle = pidAverageSpeed.update(targetAvgSpeed - averageSpeed);
+  float commandSpeed = pidAngle.update(commandAngle - angle);
+
+  //!!!!! try doing a step response here by alternating speed between +x, 0 and -x
+  commandSpeed = 2;
+
+  float leftPower = pidLeftSpeed.update(commandSpeed - leftSpeed + targetTurnSpeed);
+  float rightPower = pidRightSpeed.update(commandSpeed - rightSpeed - targetTurnSpeed);
+  LeftMotor.SetPower(leftPower);
+  RightMotor.SetPower(rightPower);
 }

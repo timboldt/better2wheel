@@ -110,6 +110,7 @@ float IMU::GetAngle() {
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
     angle = ypr[2] > 0 ? PI - ypr[2] : -1 * (PI + ypr[2]);
+    angle = -1.0f * angle * 180.0f / PI;
   }
 
   return angle;

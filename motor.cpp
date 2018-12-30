@@ -2,7 +2,7 @@
 
 #include "motor.h"
 
-const uint8_t max_speed = 255;
+const uint8_t max_power = 255;
 
 void Motor::SetupPins(uint8_t dir_pin, uint8_t pwm_pin) {
   // NOTE: On stm32duino, we can't do this in the constructor.
@@ -13,25 +13,25 @@ void Motor::SetupPins(uint8_t dir_pin, uint8_t pwm_pin) {
   digitalWrite(_pwm_pin, LOW);
 }
 
-void Motor::SetSpeed(int speed) {
+void Motor::SetPower(int power) {
   // Clear the previous request.
   analogWrite(_pwm_pin, 0);
 
-  // If the speed is negative, run the motor in reverse.
-  if (speed < 0) {
+  // If the power is negative, run the motor in reverse.
+  if (power < 0) {
     // Reverse.
-    speed = -speed;
+    power = -power;
     digitalWrite(_dir_pin, LOW);
   } else {
     // Forward.
     digitalWrite(_dir_pin, HIGH);
   }
 
-  // Clip the speed at the maximum value.
-  if (speed > max_speed) {
-    speed = max_speed;
+  // Clip the power at the maximum value.
+  if (power > max_power) {
+    power = max_power;
   }
 
-  // Set the motor direction and speed, as requested.
-  analogWrite(_pwm_pin, speed);
+  // Set the motor direction and power, as requested.
+  analogWrite(_pwm_pin, power);
 }
