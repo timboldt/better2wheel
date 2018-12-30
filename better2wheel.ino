@@ -12,8 +12,8 @@
 //      A4 - SDA
 //      D2 - INT (interrupt pin)
 //   Wheel encoders:
-//      A0 - Left side, channel A
-//      A1 - Left side, channel B
+//      A0 - Left side, channel B
+//      A1 - Left side, channel A
 //      A2 - Right side, channel A
 //      A3 - Right side, channel B
 //   Motors:
@@ -23,196 +23,49 @@
 //      D12 - Right side, speed pin
 
 #include <Arduino.h>
-#ifdef __AVR__
-#include <avr/wdt.h>
-#endif
 #include <wiring.h>
 
+#include "encoder.h"
 #include "imu.h"
 #include "motor.h"
 #include "pid.h"
 
-// ================================================================
-//   MPU6050 IMU
-// ================================================================
-
 IMU imu;
-
-// ================================================================
-//   Motor Control
-// ================================================================
 
 Motor LeftMotor;
 Motor RightMotor;
 
-void motorSetup() {
-#ifdef __AVR__
-  // Change the timer frequency
-  // To avoid the frequency of hearing.
-  TCCR2B &= ~7;
-  TCCR2B |= 1;
-#endif
+Encoder LeftEncoder;
+Encoder RightEncoder;
 
-  LeftMotor.SetupPins(10, 3);
-  RightMotor.SetupPins(12, 11);
-}
-
-// ================================================================
-//   Encoder Reader
-// ================================================================
-
-#define LEFT_ENCODER_A (1 << 0)
-#define LEFT_ENCODER_B (1 << 1)
-#define RIGHT_ENCODER_B (1 << 2)  // Intentionally reversed from physical pins.
-#define RIGHT_ENCODER_A (1 << 3)  // Intentionally reversed from physical pins.
-
-volatile long int rightOdometer = 0;
-volatile long int leftOdometer = 0;
-
-void encoderISR() {
-  rightOdometer++;
-}
-
-#ifdef __AVR__
-ISR(PCINT1_vect) {
-  static char oldPin = 0xff;
-  char in = PINC;
-  char change = in ^ oldPin;
-  if (change & RIGHT_ENCODER_A) {
-    if (in & RIGHT_ENCODER_A) {
-      if (in & RIGHT_ENCODER_B) {
-        rightOdometer++;
-      } else {
-        rightOdometer--;
-      }
-    } else {
-      if (in & RIGHT_ENCODER_B) {
-        rightOdometer--;
-      } else {
-        rightOdometer++;
-      }
-    }
-  } else if (change & (RIGHT_ENCODER_B)) {
-    if (in & (RIGHT_ENCODER_B)) {
-      if (in & RIGHT_ENCODER_A) {
-        rightOdometer--;
-      } else {
-        rightOdometer++;
-      }
-    } else {
-      if (in & RIGHT_ENCODER_A) {
-        rightOdometer++;
-      } else {
-        rightOdometer--;
-      }
-    }
-  }
-
-  if (change & LEFT_ENCODER_A) {
-    if (in & LEFT_ENCODER_A) {
-      if (in & LEFT_ENCODER_B) {
-        leftOdometer++;
-      } else {
-        leftOdometer--;
-      }
-    } else {
-      if (in & LEFT_ENCODER_B) {
-        leftOdometer--;
-      } else {
-        leftOdometer++;
-      }
-    }
-  } else if (change & (LEFT_ENCODER_B)) {
-    if (in & (LEFT_ENCODER_B)) {
-      if (in & LEFT_ENCODER_A) {
-        leftOdometer--;
-      } else {
-        leftOdometer++;
-      }
-    } else {
-      if (in & LEFT_ENCODER_A) {
-        leftOdometer++;
-      } else {
-        leftOdometer--;
-      }
-    }
-  }
-  oldPin = in;
-}
-#endif
-
-void encoderSetup() {
-  pinMode(A0, INPUT_PULLUP);
-  pinMode(A1, INPUT_PULLUP);
-  pinMode(A2, INPUT_PULLUP);
-  pinMode(A3, INPUT_PULLUP);
-  attachInterrupt(A0, encoderISR, HIGH);
-  attachInterrupt(A1, encoderISR, HIGH);
-  attachInterrupt(A2, encoderISR, HIGH);
-  attachInterrupt(A3, encoderISR, HIGH);
-#ifdef __AVR__
-  PCIFR = 1 << 1;
-  PCMSK1 = RIGHT_ENCODER_A | RIGHT_ENCODER_B | LEFT_ENCODER_A | LEFT_ENCODER_B;
-  PCICR = 1 << 1;
-  sei();
-#endif
-}
-
-// ================================================================
-//   PID Control
-// ================================================================
-
-
-PidInfo pidDistance(0, 0, 0, 0.035);  // old=(0, 1.0, 0, 0.035)
-
+PidInfo pidDistance(0, 0.1, 0, 5.0 / 180.0f * PI); 
 PidInfo pidAngle(1145, 57, 0, 255);
-
 // The differential PID controller handles differences in wheel speeds, and
 // corrects for unintentional differential steering. The P-term is essential,
 // but I'm not sure about the I-term.
-PidInfo pidDifferential(1, 1e-4, 0, 512);
-
-
-// ================================================================
-//   Mainline Code
-// ================================================================
+PidInfo pidDifferential(100, 0.1, 0, 512);
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting...");
 
-#ifdef __AVR__
-  // Setup a watchdog
-  // When the battery voltage is insufficient / program unexpected
-  // Watchdog reset chip
-  wdt_enable(WDTO_1S);
-  wdt_reset();
-#endif
-
   imu.Setup(2);  // Digital pin 2 for the I2C interrupt.
-  motorSetup();
-  encoderSetup();
+  LeftMotor.SetupPins(10, 3);
+  RightMotor.SetupPins(12, 11);
+  LeftEncoder.Setup(A0, A1);
+  RightEncoder.Setup(A2, A3);
+
   Serial.println("Boot Complete");
 }
 
 void loop() {
-  static float targetAngle = 0;
-
-#ifdef __AVR__
-  wdt_reset();
-#endif
-
+  // Read inputs.
   float angle = imu.GetAngle();
-  {
-    // Serial.print(targetAngle);
-    // Serial.print("\t");
-    //Serial.println(angle * 180 / PI);
-    Serial.print(leftOdometer);
-    Serial.print("\t");
-    Serial.println(rightOdometer);
-  }
-  if (abs(angle) > PI / 6) {
-    // Game over. Stop the motors.
+  float leftOdometer = LeftEncoder.GetOdometer();
+  float rightOdometer = RightEncoder.GetOdometer();
+
+  // Check for unrecoverable tilt.
+  if (abs(angle) > PI / 4.0f) {
     LeftMotor.SetSpeed(0);
     RightMotor.SetSpeed(0);
     pidDistance.reset();
@@ -221,18 +74,21 @@ void loop() {
     Serial.println("Over-tilt!");
     return;
   }
-  float distance = leftOdometer / 1e6;
-  targetAngle = pidDistance.update(-distance);
-  const float twoDegrees = 0.035;
-  if (targetAngle > twoDegrees) {
-    targetAngle = twoDegrees;
-  } else if (targetAngle < -twoDegrees) {
-    targetAngle = twoDegrees;
+
+  // Compute the speed of both wheels.
+  float distance = (leftOdometer + rightOdometer) / 2.0f;
+  float targetAngle = pidDistance.update(-distance);
+  const float maxAngleOffset = 10.0 / 180.0f * PI;
+  if (targetAngle > maxAngleOffset) {
+    targetAngle = maxAngleOffset;
+  } else if (targetAngle < -maxAngleOffset) {
+    targetAngle = maxAngleOffset;
   }
   float speed = pidAngle.update(angle - targetAngle);
-  float speedAdjust = pidDifferential.update(leftOdometer - rightOdometer);
-  // XXXX
-  speedAdjust = 0;
+Serial.print((angle - targetAngle)/PI*180);
+Serial.print("\t");
+Serial.println(speed);
+  float speedAdjust = pidDifferential.update(rightOdometer - leftOdometer);
   LeftMotor.SetSpeed(speedAdjust + speed);
   RightMotor.SetSpeed(speedAdjust - speed);
 }
