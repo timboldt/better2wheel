@@ -18,9 +18,9 @@
 //      A3 - Right side, channel B
 //   Motors:
 //      D3 - Left side, speed pin
-//      D10 (D8 if using shield with Uno) - Left side, direction pin
-//      D11 - Right side, direction pin
-//      D12 - Right side, speed pin
+//      D4 (D8 if using shield with Uno) - Left side, direction pin
+//      D5 - Right side, speed pin
+//      D6 - Right side, direction pin
 
 #include <Arduino.h>
 #include <wiring.h>
@@ -44,8 +44,8 @@ Encoder RightEncoder;
 
 PidInfo pidAverageSpeed(0, 0.1, 0, 5.0 / 180.0f * PI);
 PidInfo pidAngle(1145, 57, 0, 255);
-PidInfo pidLeftSpeed(0, 0, 0, 0);
-PidInfo pidRightSpeed(0, 0, 0, 0);
+PidInfo pidLeftSpeed(50, 0.025, 0, 255);
+PidInfo pidRightSpeed(50, 0.025, 0, 255);
 
 // User input.
 float targetAvgSpeed = 0;   // Revolutions per second.
@@ -56,8 +56,8 @@ void setup() {
   Serial.println("Booting...");
 
   imu.Setup(2);  // Digital pin 2 for the I2C interrupt.
-  LeftMotor.SetupPins(10, 3);
-  RightMotor.SetupPins(12, 11);
+  LeftMotor.SetupPins(4, 3);
+  RightMotor.SetupPins(6, 5);
   LeftEncoder.Setup(A0, A1);
   RightEncoder.Setup(A2, A3);
 
@@ -74,6 +74,7 @@ void loop() {
   float currTime = millis();
   float elapsedTime = currTime - prevTime;
   prevTime = currTime;
+  if (elapsedTime < 1) return;
 
   // Get tilt angle in degrees (straight up is zero; positive angle is forward).
   float angle = imu.GetAngle();
@@ -101,27 +102,45 @@ void loop() {
   averageSpeed = SPEED_EXP_MOVING_AVG_ALPHA * (leftSpeed + rightSpeed) / 2.0f +
                  (1 - SPEED_EXP_MOVING_AVG_ALPHA) * averageSpeed;
 
-  if (DEBUG_INPUTS) {
-    Serial.print(elapsedTime);
-    Serial.print("\t");
-    Serial.print(angle);
-    Serial.print("\t");
-    Serial.print(leftSpeed);
-    Serial.print("\t");
-    Serial.print(rightSpeed);
-    Serial.print("\t");
-    Serial.print(averageSpeed);
-    Serial.println();
-  }
-
   float commandAngle = pidAverageSpeed.update(targetAvgSpeed - averageSpeed);
   float commandSpeed = pidAngle.update(commandAngle - angle);
 
-  //!!!!! try doing a step response here by alternating speed between +x, 0 and -x
-  commandSpeed = 2;
+  // //!!!!! try doing a step response here by alternating speed between +x, 0 and -x
+  // uint32_t period = millis() / 1000;
+  // int phase = period % 3;
+  // if (phase == 0) {
+  //   commandSpeed = 2.0;
+  // } else if (phase == 1) {
+  //   commandSpeed = -2.0;
+  // } else {
+  //   commandSpeed = 0.0;
+  // }
 
   float leftPower = pidLeftSpeed.update(commandSpeed - leftSpeed + targetTurnSpeed);
   float rightPower = pidRightSpeed.update(commandSpeed - rightSpeed - targetTurnSpeed);
+
+  //!!!!! try doing a step response here by alternating speed between +x, 0 and -x
+  uint32_t period = millis() / 1000;
+  int phase = period % 16;
+  leftPower = 256 - (phase * 16);
+  rightPower = leftPower;
   LeftMotor.SetPower(leftPower);
-  RightMotor.SetPower(rightPower);
+  RightMotor.SetPower(-rightPower);
+
+  if (DEBUG_INPUTS) {
+    // Serial.print(elapsedTime);
+    // Serial.print("\t");
+    // Serial.print(angle);
+    // Serial.print("\t");
+    Serial.print(leftPower / 255.0 * 100.0);
+    // Serial.print("\t");
+    // Serial.print(rightPower / 255.0 * 100.0);
+    // Serial.print("\t");
+    // Serial.print(leftSpeed / -5.0 * 100.0);
+    // Serial.print("\t");
+    // Serial.print(rightSpeed / -5.0 * 100.0);
+    Serial.print("\t");
+    Serial.print(averageSpeed / -5.0 * 100.0);
+    Serial.println();
+  }
 }

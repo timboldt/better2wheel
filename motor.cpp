@@ -10,7 +10,8 @@ void Motor::SetupPins(uint8_t dir_pin, uint8_t pwm_pin) {
   _pwm_pin = pwm_pin;
 
   pinMode(_dir_pin, OUTPUT);
-  digitalWrite(_pwm_pin, LOW);
+  pinMode(_pwm_pin, OUTPUT);
+  analogWrite(_pwm_pin, 0);
 }
 
 void Motor::SetPower(int power) {
