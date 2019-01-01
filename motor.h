@@ -18,5 +18,6 @@ class Motor {
   void SetPower(int power);
 
  private:
-  uint8_t _dir_pin, _pwm_pin;
+  uint8_t dir_pin_, pwm_pin_;
+  // int prev_power_;
 };

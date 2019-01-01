@@ -37,7 +37,7 @@
 #include "motor.h"
 #include "pid.h"
 
-const bool DEBUG_OUTPUT = false;
+const bool DEBUG_OUTPUT = true;
 const float SPEED_EXP_MOVING_AVG_ALPHA = 0.4;
 const float MILLIS_PER_SECOND = 1000;
 
@@ -49,8 +49,8 @@ Motor RightMotor;
 Encoder LeftEncoder;
 Encoder RightEncoder;
 
-PidInfo pidAverageSpeed(0, 0.1, 0, 5.0 / 180.0f * PI);
-PidInfo pidAngle(10, 0, 0, 5);
+PidInfo pidAverageSpeed(1, 0, 0, 5.0);
+PidInfo pidAngle(0.5, 0.5/20.0, 1.5, 5);
 PidInfo pidLeftSpeed(10, 0.05, 20, 5);
 PidInfo pidRightSpeed(10, 0.05, 20, 5);
 
@@ -110,8 +110,6 @@ void loop() {
                  (1 - SPEED_EXP_MOVING_AVG_ALPHA) * averageSpeed;
 
   float commandAngle = pidAverageSpeed.update(targetAvgSpeed - averageSpeed);
-
-  commandAngle = 0;
   float commandSpeed = -pidAngle.update(commandAngle - angle);
 
   const float SPEED_POWER_RATIO = 255.0 / 5.0;
@@ -128,17 +126,19 @@ void loop() {
   if (DEBUG_OUTPUT) {
     // Serial.print(elapsedTime);
     // Serial.print("\t");
-    Serial.print(angle * 100);
+    Serial.print(commandAngle * 10);
     Serial.print("\t");
-    Serial.print(commandSpeed * 100);
+    Serial.print(angle * 10);
+    // Serial.print("\t");
+    // Serial.print(commandSpeed * 10);
     // Serial.print("\t");
     // Serial.print(rightPower / 255.0 * 100.0);
     // Serial.print("\t");
-    // Serial.print(leftSpeed);
+    // Serial.print(leftSpeed * 10);
     // Serial.print("\t");
-    // Serial.print(rightSpeed);
+    // Serial.print(rightSpeed * 10);
     Serial.print("\t");
-    Serial.print(averageSpeed * 100);
+    Serial.print(averageSpeed * 10);
     Serial.println();
   }
 }
